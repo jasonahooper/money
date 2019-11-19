@@ -7,34 +7,29 @@ Gem::Specification.new do |s|
   s.name        = "money"
   s.version     = Money::VERSION
   s.platform    = Gem::Platform::RUBY
-  s.authors     = ["Shane Emmons"]
-  s.email       = ["shane@emmons.io"]
-  s.homepage    = "http://rubymoney.github.io/money"
+  s.authors     = ['Shane Emmons', 'Anthony Dmitriyev']
+  s.email       = ['shane@emmons.io', 'anthony.dmitriyev@gmail.com']
+  s.homepage    = "https://rubymoney.github.io/money"
   s.summary     = "A Ruby Library for dealing with money and currency conversion."
   s.description = "A Ruby Library for dealing with money and currency conversion."
   s.license     = "MIT"
 
-  s.post_install_message = <<MSG
-Please note the following API changes in Money version 6
+  s.add_dependency 'i18n', [">= 0.6.4", '<= 2']
 
- - Money#amount, Money#dollars methods now return instances of BigDecimal (rather than Float).
-
-Please read the migration notes at https://github.com/RubyMoney/money#migration-notes
-and choose the migration that best suits your application.
-
-Test responsibly :-)
-MSG
-
-  s.add_dependency 'i18n', ['>= 0.6.4', '<= 0.7.0']
-
-  s.add_development_dependency "bundler", "~> 1.3"
+  s.add_development_dependency "bundler"
   s.add_development_dependency "rake"
-  s.add_development_dependency "rspec", "~> 3.2.0"
-  s.add_development_dependency "yard", "~> 0.8"
+  s.add_development_dependency "rspec", "~> 3.4"
+  s.add_development_dependency "yard", "~> 0.9.11"
   s.add_development_dependency "kramdown", "~> 1.1"
 
-  s.files         = `git ls-files`.split($/)
+  s.files         = `git ls-files -z -- config/* lib/* CHANGELOG.md LICENSE money.gemspec README.md`.split("\x0")
   s.executables   = s.files.grep(%r{^bin/}) { |f| File.basename(f) }
   s.test_files    = s.files.grep(%r{^(test|spec|features)/})
   s.require_paths = ["lib"]
+
+  if s.respond_to?(:metadata)
+    s.metadata['changelog_uri'] = 'https://github.com/RubyMoney/money/blob/master/CHANGELOG.md'
+    s.metadata['source_code_uri'] = 'https://github.com/RubyMoney/money/'
+    s.metadata['bug_tracker_uri'] = 'https://github.com/RubyMoney/money/issues'
+  end
 end

@@ -8,13 +8,16 @@ class Money
 
   # Represents a specific currency unit.
   #
-  # @see http://en.wikipedia.org/wiki/Currency
+  # @see https://en.wikipedia.org/wiki/Currency
   # @see http://iso4217.net/
   class Currency
     include Comparable
     extend Enumerable
-    extend Money::Currency::Loader
     extend Money::Currency::Heuristics
+
+    # Keeping cached instances in sync between threads
+    @@mutex = Mutex.new
+    @@instances = {}
 
     # Thrown when a Currency has been registered without all the attributes
     # which are required for the current action.
@@ -31,6 +34,18 @@ class Money
     class UnknownCurrency < ArgumentError; end
 
     class << self
+      def new(id)
+        id = id.to_s.downcase
+        unless stringified_keys.include?(id)
+          raise UnknownCurrency, "Unknown currency '#{id}'"
+        end
+
+        _instances[id] || @@mutex.synchronize { _instances[id] ||= super }
+      end
+
+      def _instances
+        @@instances
+      end
 
       # Lookup a currency with given +id+ an returns a +Currency+ instance on
       # success, +nil+ otherwise.
@@ -60,10 +75,12 @@ class Money
       #
       # @example
       #   Money::Currency.find_by_iso_numeric(978) #=> #<Money::Currency id: eur ...>
+      #   Money::Currency.find_by_iso_numeric(51) #=> #<Money::Currency id: amd ...>
       #   Money::Currency.find_by_iso_numeric('001') #=> nil
       def find_by_iso_numeric(num)
-        num = num.to_s
-        id, _ = self.table.find{|key, currency| currency[:iso_numeric] == num}
+        num = num.to_s.rjust(3, '0')
+        return if num.empty?
+        id, _ = self.table.find { |key, currency| currency[:iso_numeric] == num }
         new(id)
       rescue UnknownCurrency
         nil
@@ -96,15 +113,15 @@ class Money
       #
       # == monetary unit
       # The standard unit of value of a currency, as the dollar in the United States or the peso in Mexico.
-      # http://www.answers.com/topic/monetary-unit
+      # https://www.answers.com/topic/monetary-unit
       # == fractional monetary unit, subunit
       # A monetary unit that is valued at a fraction (usually one hundredth) of the basic monetary unit
-      # http://www.answers.com/topic/fractional-monetary-unit-subunit
+      # https://www.answers.com/topic/fractional-monetary-unit-subunit
       #
-      # See http://en.wikipedia.org/wiki/List_of_circulating_currencies and
+      # See https://en.wikipedia.org/wiki/List_of_circulating_currencies and
       # http://search.cpan.org/~tnguyen/Locale-Currency-Format-1.28/Format.pm
       def table
-        @table ||= load_currencies
+        @table ||= Loader.load_currencies
       end
 
       # List the currencies imported and registered
@@ -152,10 +169,20 @@ class Money
       # @option delimiter [String] character between each thousands place
       def register(curr)
         key = curr.fetch(:iso_code).downcase.to_sym
+        @@mutex.synchronize { _instances.delete(key.to_s) }
         @table[key] = curr
-        @stringified_keys = stringify_keys
+        @stringified_keys = nil
       end
 
+      # Inherit a new currency from existing one
+      #
+      # @param parent_iso_code [String] the international 3-letter code as defined
+      # @param curr [Hash] See {register} method for hash structure
+      def inherit(parent_iso_code, curr)
+        parent_iso_code = parent_iso_code.downcase.to_sym
+        curr = @table.fetch(parent_iso_code, {}).merge(curr)
+        register(curr)
+      end
 
       # Unregister a currency.
       #
@@ -171,10 +198,9 @@ class Money
           key = curr.downcase.to_sym
         end
         existed = @table.delete(key)
-        @stringified_keys = stringify_keys
+        @stringified_keys = nil if existed
         existed ? true : false
       end
-
 
       def each
         all.each { |c| yield(c) }
@@ -188,40 +214,40 @@ class Money
       end
     end
 
-    # @!attribute [r] id 
+    # @!attribute [r] id
     #   @return [Symbol] The symbol used to identify the currency, usually THE
     #     lowercase +iso_code+ attribute.
-    # @!attribute [r] priority 
+    # @!attribute [r] priority
     #   @return [Integer] A numerical value you can use to sort/group the
     #     currency list.
-    # @!attribute [r] iso_code 
+    # @!attribute [r] iso_code
     #   @return [String] The international 3-letter code as defined by the ISO
     #     4217 standard.
-    # @!attribute [r] iso_numeric 
+    # @!attribute [r] iso_numeric
     #   @return [String] The international 3-numeric code as defined by the ISO
     #     4217 standard.
-    # @!attribute [r] name 
+    # @!attribute [r] name
     #   @return [String] The currency name.
-    # @!attribute [r] symbol 
+    # @!attribute [r] symbol
     #   @return [String] The currency symbol (UTF-8 encoded).
-    # @!attribute [r] disambiguate_symbol 
+    # @!attribute [r] disambiguate_symbol
     #   @return [String] Alternative currency used if symbol is ambiguous
-    # @!attribute [r] html_entity 
+    # @!attribute [r] html_entity
     #   @return [String] The html entity for the currency symbol
-    # @!attribute [r] subunit 
+    # @!attribute [r] subunit
     #   @return [String] The name of the fractional monetary unit.
-    # @!attribute [r] subunit_to_unit 
+    # @!attribute [r] subunit_to_unit
     #   @return [Integer] The proportion between the unit and the subunit
-    # @!attribute [r] decimal_mark 
+    # @!attribute [r] decimal_mark
     #   @return [String] The decimal mark, or character used to separate the
     #     whole unit from the subunit.
-    # @!attribute [r] The 
-    #   @return [String] character used to separate thousands grouping of the
-    #     whole unit.
-    # @!attribute [r] symbol_first 
+    # @!attribute [r] thousands_separator
+    #   @return [String] The character used to separate thousands grouping of
+    #     the whole unit.
+    # @!attribute [r] symbol_first
     #   @return [Boolean] Should the currency symbol precede the amount, or
     #     should it come after?
-    # @!attribute [r] smallest_denomination 
+    # @!attribute [r] smallest_denomination
     #   @return [Integer] Smallest amount of cash possible (in the subunit of
     #     this currency)
 
@@ -243,10 +269,6 @@ class Money
     # @example
     #   Money::Currency.new(:usd) #=> #<Money::Currency id: usd ...>
     def initialize(id)
-      id = id.to_s.downcase
-      unless self.class.stringified_keys.include?(id)
-        raise UnknownCurrency, "Unknown currency '#{id}'"
-      end
       @id = id.to_sym
       initialize_data!
     end
@@ -301,10 +323,10 @@ class Money
     end
     private :compare_ids
 
-    # Returns a Fixnum hash value based on the +id+ attribute in order to use
+    # Returns a Integer hash value based on the +id+ attribute in order to use
     # functions like & (intersection), group_by, etc.
     #
-    # @return [Fixnum]
+    # @return [Integer]
     #
     # @example
     #   Money::Currency.new(:usd).hash #=> 428936
@@ -361,7 +383,7 @@ class Money
       id.to_s.upcase.to_sym
     end
 
-    # Conversation to +self+.
+    # Conversion to +self+.
     #
     # @return [self]
     def to_currency
@@ -379,41 +401,29 @@ class Money
       !!@symbol_first
     end
 
-    # Returns the number of digits after the decimal separator.
+    # Returns if a code currency is ISO.
     #
-    # @return [Float]
-    def exponent
-      Math.log10(@subunit_to_unit)
+    # @return [Boolean]
+    #
+    # @example
+    #   Money::Currency.new(:usd).iso?
+    #
+    def iso?
+      iso_numeric && iso_numeric != ''
     end
 
-    # Cache decimal places for subunit_to_unit values.  Common ones pre-cached.
-    def self.decimal_places_cache
-      @decimal_places_cache ||= {1 => 0, 10 => 1, 100 => 2, 1000 => 3}
-    end
-
-    # The number of decimal places needed.
+    # Returns the relation between subunit and unit as a base 10 exponent.
+    #
+    # Note that MGA and MRU are exceptions and are rounded to 1
+    # @see https://en.wikipedia.org/wiki/ISO_4217#Active_codes
     #
     # @return [Integer]
-    def decimal_places
-      cache[subunit_to_unit] ||= calculate_decimal_places(subunit_to_unit)
+    def exponent
+      Math.log10(subunit_to_unit).round
     end
+    alias decimal_places exponent
 
     private
-
-    def cache
-      self.class.decimal_places_cache
-    end
-
-    # If we need to figure out how many decimal places we need we
-    # use repeated integer division.
-    def calculate_decimal_places(num)
-      i = 1
-      while num >= 10
-        num /= 10
-        i += 1 if num >= 10
-      end
-      i
-    end
 
     def initialize_data!
       data = self.class.table[@id]

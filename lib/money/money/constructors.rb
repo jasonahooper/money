@@ -10,8 +10,7 @@ class Money
     # @example
     #   Money.empty #=> #<Money @fractional=0>
     def empty(currency = default_currency)
-      @empty ||= {}
-      @empty[currency] ||= Money.new(0, currency).freeze
+      new(0, currency)
     end
     alias_method :zero, :empty
 
@@ -28,7 +27,7 @@ class Money
     #   n.cents    #=> 100
     #   n.currency #=> #<Money::Currency id: cad>
     def ca_dollar(cents)
-      Money.new(cents, "CAD")
+      new(cents, "CAD")
     end
     alias_method :cad, :ca_dollar
 
@@ -45,7 +44,7 @@ class Money
     #   n.cents    #=> 100
     #   n.currency #=> #<Money::Currency id: usd>
     def us_dollar(cents)
-      Money.new(cents, "USD")
+      new(cents, "USD")
     end
     alias_method :usd, :us_dollar
 
@@ -61,7 +60,7 @@ class Money
     #   n.cents    #=> 100
     #   n.currency #=> #<Money::Currency id: eur>
     def euro(cents)
-      Money.new(cents, "EUR")
+      new(cents, "EUR")
     end
     alias_method :eur, :euro
 
@@ -77,7 +76,7 @@ class Money
     #   n.fractional    #=> 100
     #   n.currency #=> #<Money::Currency id: gbp>
     def pound_sterling(pence)
-      Money.new(pence, "GBP")
+      new(pence, "GBP")
     end
     alias_method :gbp, :pound_sterling
 

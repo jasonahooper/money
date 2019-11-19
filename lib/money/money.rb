@@ -3,7 +3,9 @@ require "money/bank/variable_exchange"
 require "money/bank/single_currency"
 require "money/money/arithmetic"
 require "money/money/constructors"
-require "money/money/formatting"
+require "money/money/formatter"
+require "money/money/allocation"
+require "money/money/locale_backend"
 
 # "Money is any object or record that is generally accepted as payment for
 # goods and services and repayment of debts in a given socio-economic context
@@ -15,7 +17,8 @@ require "money/money/formatting"
 #
 # @see http://en.wikipedia.org/wiki/Money
 class Money
-  include Money::Arithmetic, Money::Formatting, Comparable
+  include Comparable
+  include Money::Arithmetic
   extend Constructors
 
   # Raised when smallest denomination of a currency is not defined
@@ -34,17 +37,17 @@ class Money
   # The value of the monetary amount represented in the fractional or subunit
   # of the currency.
   #
-  # For example, in the US Dollar currency the fractional unit is cents, and
-  # there are 100 cents in one US Dollar. So given the Money representation of
+  # For example, in the US dollar currency the fractional unit is cents, and
+  # there are 100 cents in one US dollar. So given the Money representation of
   # one US dollar, the fractional interpretation is 100.
   #
-  # Another example is that of the Kuwaiti Dinar. In this case the fractional
-  # unit is the Fils and there 1000 Fils to one Kuwaiti Dinar. So given the
-  # Money representation of one Kuwaiti Dinar, the fractional interpretation is
+  # Another example is that of the Kuwaiti dinar. In this case the fractional
+  # unit is the fils and there 1000 fils to one Kuwaiti dinar. So given the
+  # Money representation of one Kuwaiti dinar, the fractional interpretation is
   # 1000.
   #
   # @return [Integer] when infinite_precision is false
-  # @return [BigDecimal] when infintie_precision is true
+  # @return [BigDecimal] when infinite_precision is true
   #
   # @see infinite_precision
   def fractional
@@ -56,7 +59,7 @@ class Money
   end
 
   # Round a given amount of money to the nearest possible amount in cash value. For
-  # example, in Swiss francs (CHF), the smallest possible amount of cash value is
+  # example, in Swiss franc (CHF), the smallest possible amount of cash value is
   # CHF 0.05. Therefore, this method rounds CHF 0.07 to CHF 0.05, and CHF 0.08 to
   # CHF 0.10.
   #
@@ -78,7 +81,7 @@ class Money
 
   # @!attribute [r] currency
   #   @return [Currency] The money's currency.
-  # @!attribute [r] bank 
+  # @!attribute [r] bank
   #   @return [Money::Bank::Base] The +Money::Bank+-based object which currency
   #     exchanges are performed with.
 
@@ -95,7 +98,7 @@ class Money
     #     one to specify custom exchange rates.
     #
     # @!attribute default_formatting_rules
-    #   @return [Hash] Use this to define a default hash of rules for everytime
+    #   @return [Hash] Use this to define a default hash of rules for every time
     #     +Money#format+ is called.  Rules provided on method call will be
     #     merged with the default ones.  To overwrite a rule, just provide the
     #     intended value while calling +format+.
@@ -103,9 +106,9 @@ class Money
     #   @see +Money::Formatting#format+ for more details.
     #
     #   @example
-    #     Money.default_formatting_rules = { :display_free => true }
+    #     Money.default_formatting_rules = { display_free: true }
     #     Money.new(0, "USD").format                          # => "free"
-    #     Money.new(0, "USD").format(:display_free => false)  # => "$0.00"
+    #     Money.new(0, "USD").format(display_free: false)  # => "$0.00"
     #
     # @!attribute [rw] use_i18n
     #   @return [Boolean] Use this to disable i18n even if it's used by other
@@ -115,28 +118,54 @@ class Money
     #   @return [Boolean] Use this to enable infinite precision cents
     #
     # @!attribute [rw] conversion_precision
-    #   @return [Fixnum] Use this to specify precision for converting Rational
+    #   @return [Integer] Use this to specify precision for converting Rational
     #     to BigDecimal
     attr_accessor :default_bank, :default_formatting_rules,
-      :use_i18n, :infinite_precision, :conversion_precision
-
-    # @attr_writer rounding_mode Use this to specify the rounding mode
-    #
-    # @!attribute default_currency
-    #   @return [Money::Currency] The default currency, which is used when
-    #     +Money.new+ is called without an explicit currency argument. The
-    #     default value is Currency.new("USD"). The value must be a valid
-    #     +Money::Currency+ instance.
-    attr_writer :rounding_mode, :default_currency
-
+      :use_i18n, :infinite_precision, :conversion_precision,
+      :locale_backend
   end
 
+  # @!attribute default_currency
+  #   @return [Money::Currency] The default currency, which is used when
+  #     +Money.new+ is called without an explicit currency argument. The
+  #     default value is Currency.new("USD"). The value must be a valid
+  #     +Money::Currency+ instance.
   def self.default_currency
+    if @using_deprecated_default_currency
+      warn '[WARNING] The default currency will change to `nil` in the next major release. Make ' \
+           'sure to set it explicitly using `Money.default_currency=` to avoid potential issues'
+    end
+
     if @default_currency.respond_to?(:call)
       Money::Currency.new(@default_currency.call)
     else
       Money::Currency.new(@default_currency)
     end
+  end
+
+  def self.default_currency=(currency)
+    @using_deprecated_default_currency = false
+    @default_currency = currency
+  end
+
+  def self.locale_backend=(value)
+    @locale_backend = value ? LocaleBackend.find(value) : nil
+  end
+
+  # @attr_writer rounding_mode Use this to specify the rounding mode
+  def self.rounding_mode=(new_rounding_mode)
+    @using_deprecated_default_rounding_mode = false
+    @rounding_mode = new_rounding_mode
+  end
+
+  def self.use_i18n=(value)
+    if value
+      warn '[DEPRECATION] `use_i18n` is deprecated - use `Money.locale_backend = :i18n` instead for locale based formatting'
+    else
+      warn '[DEPRECATION] `use_i18n` is deprecated - use `Money.locale_backend = :currency` instead for currency based formatting'
+    end
+
+    @use_i18n = value
   end
 
   def self.setup_defaults
@@ -145,15 +174,20 @@ class Money
 
     # Set the default currency for creating new +Money+ object.
     self.default_currency = Currency.new("USD")
+    @using_deprecated_default_currency = true
 
     # Default to using i18n
-    self.use_i18n = true
+    @use_i18n = true
+
+    # Default to using legacy locale backend
+    self.locale_backend = :legacy
 
     # Default to not using infinite precision cents
     self.infinite_precision = false
 
     # Default to bankers rounding
     self.rounding_mode = BigDecimal::ROUND_HALF_EVEN
+    @using_deprecated_default_rounding_mode = true
 
     # Default the conversion of Rationals precision to 16
     self.conversion_precision = 16
@@ -165,31 +199,44 @@ class Money
 
   setup_defaults
 
-  # Use this to return the rounding mode.  You may also pass a
-  # rounding mode and a block to temporatly change it.  It will
-  # then return the results of the block instead.
+  # Use this to return the rounding mode.
   #
   # @param [BigDecimal::ROUND_MODE] mode
   #
-  # @return [BigDecimal::ROUND_MODE,Yield] rounding mode or block results
-  #
-  # @example
-  #   fee = Money.rounding_mode(BigDecimal::ROUND_HALF_UP) do
-  #     Money.new(1200) * BigDecimal.new('0.029')
-  #   end
-  def self.rounding_mode(mode=nil)
-    if mode.nil?
-      Thread.current[:money_rounding_mode] || @rounding_mode
-    else
-      begin
-        Thread.current[:money_rounding_mode] = mode
-        yield
-      ensure
-        Thread.current[:money_rounding_mode] = nil
-      end
+  # @return [BigDecimal::ROUND_MODE] rounding mode
+  def self.rounding_mode(mode = nil)
+    if mode
+      warn "[DEPRECATION] calling `rounding_mode` with a block is deprecated. Please use `.with_rounding_mode` instead."
+      return with_rounding_mode(mode) { yield }
     end
+
+    return Thread.current[:money_rounding_mode] if Thread.current[:money_rounding_mode]
+
+    if @using_deprecated_default_rounding_mode
+      warn '[WARNING] The default rounding mode will change to `ROUND_HALF_UP` in the next major ' \
+           'release. Set it explicitly using `Money.rounding_mode=` to avoid potential problems.'
+    end
+
+    @rounding_mode
   end
 
+  # This method temporarily changes the rounding mode. It will then return the
+  # results of the block instead.
+  #
+  # @param [BigDecimal::ROUND_MODE] mode
+  #
+  # @return [BigDecimal::ROUND_MODE,Yield] block results
+  #
+  # @example
+  #   fee = Money.with_rounding_mode(BigDecimal::ROUND_HALF_UP) do
+  #     Money.new(1200) * BigDecimal('0.029')
+  #   end
+  def self.with_rounding_mode(mode)
+    Thread.current[:money_rounding_mode] = mode
+    yield
+  ensure
+    Thread.current[:money_rounding_mode] = nil
+  end
 
   # Adds a new exchange rate to the default bank and return the rate.
   #
@@ -226,8 +273,9 @@ class Money
   #
   # @see #initialize
   def self.from_amount(amount, currency = default_currency, bank = default_bank)
-    Numeric === amount or raise ArgumentError, "'amount' must be numeric"
-    currency = Currency.wrap(currency)
+    raise ArgumentError, "'amount' must be numeric" unless Numeric === amount
+
+    currency = Currency.wrap(currency) || Money.default_currency
     value = amount.to_d * currency.subunit_to_unit
     value = value.round(0, rounding_mode) unless infinite_precision
     new(value, currency, bank)
@@ -254,10 +302,13 @@ class Money
   #   Money.new(100, "EUR") #=> #<Money @fractional=100 @currency="EUR">
   #
   def initialize(obj, currency = Money.default_currency, bank = Money.default_bank)
-    @fractional = obj.respond_to?(:fractional) ? obj.fractional : as_d(obj)
+    @fractional = as_d(obj.respond_to?(:fractional) ? obj.fractional : obj)
     @currency   = obj.respond_to?(:currency) ? obj.currency : Currency.wrap(currency)
     @currency ||= Money.default_currency
     @bank       = obj.respond_to?(:bank) ? obj.bank : bank
+
+    # BigDecimal can be Infinity and NaN, money of that amount does not make sense
+    raise ArgumentError, 'must be initialized with a finite value' unless @fractional.finite?
   end
 
   # Assuming using a currency using dollars:
@@ -269,7 +320,7 @@ class Money
   # @return [BigDecimal]
   #
   # @example
-  #   Money.new(1_00, "USD").dollars   # => BigDecimal.new("1.00")
+  #   Money.new(1_00, "USD").dollars   # => BigDecimal("1.00")
   #
   # @see #amount
   # @see #to_d
@@ -284,7 +335,7 @@ class Money
   # @return [BigDecimal]
   #
   # @example
-  #   Money.new(1_00, "USD").amount    # => BigDecimal.new("1.00")
+  #   Money.new(1_00, "USD").amount    # => BigDecimal("1.00")
   #
   # @see #to_d
   # @see #fractional
@@ -300,6 +351,7 @@ class Money
   # @example
   #   Money.new(100, :USD).currency_as_string #=> "USD"
   def currency_as_string
+    warn "[DEPRECATION] `currency_as_string` is deprecated. Please use `.currency.to_s` instead."
     currency.to_s
   end
 
@@ -312,13 +364,15 @@ class Money
   # @example
   #   Money.new(100).currency_as_string("CAD") #=> #<Money::Currency id: cad>
   def currency_as_string=(val)
+    warn "[DEPRECATION] `currency_as_string=` is deprecated - Money instances are immutable." \
+      " Please use `with_currency` instead."
     @currency = Currency.wrap(val)
   end
 
-  # Returns a Fixnum hash value based on the +fractional+ and +currency+ attributes
+  # Returns a Integer hash value based on the +fractional+ and +currency+ attributes
   # in order to use functions like & (intersection), group_by, etc.
   #
-  # @return [Fixnum]
+  # @return [Integer]
   #
   # @example
   #   Money.new(100).hash #=> 908351
@@ -340,7 +394,7 @@ class Money
   #
   # @return [String]
   def inspect
-    "#<Money fractional:#{fractional} currency:#{currency}>"
+    "#<#{self.class.name} fractional:#{fractional} currency:#{currency}>"
   end
 
   # Returns the amount of money as a string.
@@ -350,19 +404,10 @@ class Money
   # @example
   #   Money.ca_dollar(100).to_s #=> "1.00"
   def to_s
-    unit, subunit, fraction = strings_from_fractional
-
-    str = if currency.decimal_places == 0
-            if fraction == ""
-              unit
-            else
-              "#{unit}#{decimal_mark}#{fraction}"
-            end
-          else
-            "#{unit}#{decimal_mark}#{pad_subunit(subunit)}#{fraction}"
-          end
-
-    fractional < 0 ? "-#{str}" : str
+    format thousands_separator: '',
+           no_cents_if_whole: currency.decimal_places == 0,
+           symbol: false,
+           ignore_defaults: true
   end
 
   # Return the amount of money as a BigDecimal.
@@ -370,7 +415,7 @@ class Money
   # @return [BigDecimal]
   #
   # @example
-  #   Money.us_dollar(1_00).to_d #=> BigDecimal.new("1.00")
+  #   Money.us_dollar(1_00).to_d #=> BigDecimal("1.00")
   def to_d
     as_d(fractional) / as_d(currency.subunit_to_unit)
   end
@@ -398,7 +443,22 @@ class Money
     to_d.to_f
   end
 
-  # Conversation to +self+.
+  # Returns a new Money instance in a given currency leaving the amount intact
+  # and not performing currency conversion.
+  #
+  # @param [Currency, String, Symbol] new_currency Currency of the new object.
+  #
+  # @return [self]
+  def with_currency(new_currency)
+    new_currency = Currency.wrap(new_currency)
+    if !new_currency || currency == new_currency
+      self
+    else
+      self.class.new(fractional, new_currency, bank)
+    end
+  end
+
+  # Conversion to +self+.
   #
   # @return [self]
   def to_money(given_currency = nil)
@@ -436,7 +496,7 @@ class Money
   end
 
   # Receive a money object with the same amount as the current Money object
-  # in american dollars.
+  # in United States dollar.
   #
   # @return [Money]
   #
@@ -448,7 +508,7 @@ class Money
   end
 
   # Receive a money object with the same amount as the current Money object
-  # in canadian dollar.
+  # in Canadian dollar.
   #
   # @return [Money]
   #
@@ -471,52 +531,27 @@ class Money
     exchange_to("EUR")
   end
 
-  # Allocates money between different parties without losing pennies.
-  # After the mathmatically split has been performed, left over pennies will
-  # be distributed round-robin amongst the parties. This means that parties
-  # listed first will likely recieve more pennies then ones that are listed later
+  # Splits a given amount in parts without loosing pennies. The left-over pennies will be
+  # distributed round-robin amongst the parties. This means that parties listed first will likely
+  # receive more pennies than ones that are listed later.
   #
-  # @param [Array<Numeric>] splits [0.50, 0.25, 0.25] to give 50% of the cash to party1, 25% to party2, and 25% to party3.
-  #
-  # @return [Array<Money>]
-  #
-  # @example
-  #   Money.new(5,   "USD").allocate([0.3, 0.7])         #=> [Money.new(2), Money.new(3)]
-  #   Money.new(100, "USD").allocate([0.33, 0.33, 0.33]) #=> [Money.new(34), Money.new(33), Money.new(33)]
-  #
-  def allocate(splits)
-    allocations = allocations_from_splits(splits)
-
-    if (allocations - BigDecimal("1")) > Float::EPSILON
-      raise ArgumentError, "splits add to more then 100%"
-    end
-
-    amounts, left_over = amounts_from_splits(allocations, splits)
-
-    unless self.class.infinite_precision
-      left_over.to_i.times { |i| amounts[i % amounts.length] += 1 }
-    end
-
-    amounts.collect { |fractional| Money.new(fractional, currency) }
-  end
-
-  # Split money amongst parties evenly without losing pennies.
-  #
-  # @param [Numeric] num number of parties.
+  # @param [Array<Numeric>, Numeric] pass [2, 1, 1] to give twice as much to party1 as party2 or
+  # party3 which results in 50% of the cash to party1, 25% to party2, and 25% to party3. Passing a
+  # number instead of an array will split the amount evenly (without loosing pennies when rounding).
   #
   # @return [Array<Money>]
   #
   # @example
-  #   Money.new(100, "USD").split(3) #=> [Money.new(34), Money.new(33), Money.new(33)]
-  def split(num)
-    raise ArgumentError, "need at least one party" if num < 1
-
-    if self.class.infinite_precision
-      split_infinite(num)
-    else
-      split_flat(num)
-    end
+  #   Money.new(5,   "USD").allocate([3, 7]) #=> [Money.new(2), Money.new(3)]
+  #   Money.new(100, "USD").allocate([1, 1, 1]) #=> [Money.new(34), Money.new(33), Money.new(33)]
+  #   Money.new(100, "USD").allocate(2) #=> [Money.new(50), Money.new(50)]
+  #   Money.new(100, "USD").allocate(3) #=> [Money.new(34), Money.new(33), Money.new(33)]
+  #
+  def allocate(parts)
+    amounts = Money::Allocation.generate(fractional, parts, !Money.infinite_precision)
+    amounts.map { |amount| self.class.new(amount, currency) }
   end
+  alias_method :split, :allocate
 
   # Round the monetary amount to smallest unit of coinage.
   #
@@ -533,12 +568,37 @@ class Money
   # @see
   #   Money.infinite_precision
   #
-  def round(rounding_mode = self.class.rounding_mode)
-    if self.class.infinite_precision
-      Money.new(fractional.round(0, rounding_mode), self.currency)
-    else
-      self
-    end
+  def round(rounding_mode = self.class.rounding_mode, rounding_precision = 0)
+    rounded_amount = as_d(@fractional).round(rounding_precision, rounding_mode)
+    self.class.new(rounded_amount, currency, bank)
+  end
+
+  # Creates a formatted price string according to several rules.
+  #
+  # @param [Hash] See Money::Formatter for the list of formatting options
+  #
+  # @return [String]
+  #
+  def format(*rules)
+    Money::Formatter.new(self, *rules).to_s
+  end
+
+  # Returns a thousands separator according to the locale
+  #
+  # @return [String]
+  #
+  def thousands_separator
+    (locale_backend && locale_backend.lookup(:thousands_separator, currency)) ||
+      Money::Formatter::DEFAULTS[:thousands_separator]
+  end
+
+  # Returns a decimal mark according to the locale
+  #
+  # @return [String]
+  #
+  def decimal_mark
+    (locale_backend && locale_backend.lookup(:decimal_mark, currency)) ||
+      Money::Formatter::DEFAULTS[:decimal_mark]
   end
 
   private
@@ -547,71 +607,7 @@ class Money
     if num.respond_to?(:to_d)
       num.is_a?(Rational) ? num.to_d(self.class.conversion_precision) : num.to_d
     else
-      BigDecimal.new(num.to_s)
-    end
-  end
-
-  def strings_from_fractional
-    unit, subunit = fractional().abs.divmod(currency.subunit_to_unit)
-
-    if self.class.infinite_precision
-      strings_for_infinite_precision(unit, subunit)
-    else
-      strings_for_base_precision(unit, subunit)
-    end
-  end
-
-  def strings_for_infinite_precision(unit, subunit)
-    subunit, fraction = subunit.divmod(BigDecimal("1"))
-    fraction = fraction.to_s("F")[2..-1] # want fractional part "0.xxx"
-    fraction = "" if fraction =~ /^0+$/
-
-    [unit.to_i.to_s, subunit.to_i.to_s, fraction]
-  end
-
-  def strings_for_base_precision(unit, subunit)
-    [unit.to_s, subunit.to_s, ""]
-  end
-
-  def pad_subunit(subunit)
-    cnt = currency.decimal_places
-    padding = "0" * cnt
-    "#{padding}#{subunit}"[-1 * cnt, cnt]
-  end
-
-  def allocations_from_splits(splits)
-    splits.inject(0) { |sum, n| sum + as_d(n) }
-  end
-
-  def amounts_from_splits(allocations, splits)
-    left_over = fractional
-
-    amounts = splits.map do |ratio|
-      if self.class.infinite_precision
-        fractional * ratio
-      else
-        (fractional * ratio / allocations).floor.tap do |frac|
-          left_over -= frac
-        end
-      end
-    end
-
-    [amounts, left_over]
-  end
-
-  def split_infinite(num)
-    amt = div(as_d(num))
-    1.upto(num).map{amt}
-  end
-
-  def split_flat(num)
-    low = Money.new(fractional / num, currency)
-    high = Money.new(low.fractional + 1, currency)
-
-    remainder = fractional % num
-
-    Array.new(num).each_with_index.map do |_, index|
-      index < remainder ? high : low
+      BigDecimal(num.to_s.empty? ? 0 : num.to_s)
     end
   end
 
@@ -621,5 +617,9 @@ class Money
     else
       value.round(0, self.class.rounding_mode).to_i
     end
+  end
+
+  def locale_backend
+    self.class.locale_backend
   end
 end

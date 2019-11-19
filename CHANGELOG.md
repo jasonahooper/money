@@ -1,7 +1,152 @@
 # Changelog
 
-## Next release
+## 6.13.4
+- Update currency config for Zambian Kwacha (ZMW)
+- Do not modify options passed to FormattingRules
 
+## 6.13.3
+- Remove specs from the packaged gem
+- Use Currency::Loader directly without extending
+- Add Money.with_rounding_mode as a replacement for calling Money.rounding_mode with a block
+- Fix currency search for two digit ISO numbers
+- Add description to TypeError raised by +/- operations
+
+## 6.13.2
+- Prevent Money initialization with non-finite amounts
+- Convert the fractional value of a Money object to BigDecimal when initializing
+- Offer replacements for currency position deprecations
+- Fix Peruvian Sol symbol
+- Lock i18n to <= 1.2.0 for older (< 2.3) rubies
+- Prevent Divide By Zero in `Money#allocate`
+
+## 6.13.1
+- Add bolívar soberano (VES)
+- Deprecate bolívar fuerte (VEF)
+- Deprecate old `#format` rules passed as a symbol
+- Clarify `use_i18n` deprecation
+- Add `:currency` locale_backend for explicit per-currency localization
+
+## 6.13.0
+- Add :format option to the Formatter
+- Add ruby 2.6.0 support
+- Performance improvement (lazy stringify currency keys)
+- Add `Money.locale_backend` for translation lookups
+- Deprecate `use_i18n` flag in favour of `locale_backend = :i18n`
+- Deprecate old formatting rules in favour of `:format`
+- LVL and LTL are no longer used
+- Add `Currency#iso?` for checking if currency is iso or not
+- Relax versions-lock of `i18n` and `rspec` dependencies
+- Add Bitcoin Cash
+- Fix incorrect behaviour of `Currency#find_by_currency_iso` when given empty input
+
+## 6.12.0
+- Remove caching of `.empty`/`.zero`
+- Preserve assigned bank when rounding
+- Always round the fractional part when calling `#round`
+- Wrap all amount parts when `:html_wrap` option is used
+- Deprecate `#currency_as_string` and `#currency_as_string=` (in favour of `#with_currency`)
+- Add `#with_currency` for swapping the currency
+- Rewrite allocate/split (fixing some penny loosing issues)
+
+## 6.11.3
+- Fix regression: if enabled use i18n locales in Money#to_s
+
+## 6.11.2
+- Fix regression: ignore formatting defaults for Money#to_s
+
+## 6.11.1
+- Fix issue with adding non-USD money to zero (used when calling `.sum` on an array)
+
+## 6.11.0
+- Support i18n 1.0
+- Update yard dependency to 0.9.11
+- Support for ruby 2.5.0
+- Add inheritance for currency definitions
+- Added new symbol for bitcoin denomination
+- Specify custom rounding precision when using `infinite_precision`
+- Allow splits with sums greater than 1
+- Prevent arithmetic methods from loosing reference to the bank
+- Fix coerced zero numeric subtraction
+- Fix south asian formatting to support whole numbers
+- Refactor formatting logic
+
+## 6.10.1
+- Fix an issue with Money.empty memoization
+
+## 6.10.0
+- Added support for i18n version 0.9
+- Disabled rounding when verifying allocation splits
+- Added Chinese Yuan Offshore (CNH)
+- Fixed html_entity for ARS
+- Fixed KZT symbol
+- Allowed comparing cross currency when both are zero
+- Fixed memory rate store
+- Corrected HUF subunit and thousands separator config
+
+## 6.9.0
+- Extracted heuristics into money-heuristics gem
+
+## 6.8.4
+- Resolving NIO ambiguity with CAD
+- Display the BBD $ symbol before digits
+- Symbol first for NIO and PAB currencies
+
+## 6.8.3
+- Added support for the British Penny (GBX)
+- Fixed LKR currency html_entity symbol
+
+## 6.8.2
+- Removed subunits for HUF
+- Fixed `#from_amount` accepting `nil` as currency_code
+- Relaxed i18n version (< 0.9)
+- Set symbol for UZS
+- Added disambiguate_symbol for XFU
+- Fixed Peruvian Sol name
+- Fixed symbol_first for VND (now `false`)
+
+## 6.8.1
+- Fixed issue with calling `format` on a frozen `Money` object
+
+## 6.8.0
+- Ruby 2.4.0 support
+- Fixed UZS syntax
+- Fixed HUF smallest denomination
+- Fixed ruby 1.9 issues
+- Fixed html entity for COP
+- Updated all currency decimals to ISO-4217
+- Fixed money allocation for negative amounts
+- Fixed symbol_first for RON
+- Fixed disambiguate option when symbol is set to true
+- Fixed thousands separator for CZK
+- Improved formatter performance by precaching I18n calls
+
+## 6.7.1
+- Changed DKK symbol from 'kr' to 'kr.'
+- Improved Money::Formatting#format docs
+- Updated VEF symbol from 'Bs F' to 'Bs'
+- `Currency#exponent` now returns Fixnum
+- Fixed coercion issues
+- Fixed edge case with explicit override of thousands separator and decimal mark
+- `Money#==` will now raise error for non-zero numeric values
+- Fixed divmod
+- Added disambiguation symbol to USD Dollar
+- Use disambiguation symbol when both disambiguate and symbol are true in `format` method
+
+## 6.7.0
+ - Changed `Money#<=>` to return `nil` if the comparison is inappropriate. (#584)
+ - Remove implicit conversion of values being compared. Only accept `Money` and
+   subclasses of `Money` for comparisons and raise TypeError otherwise.
+ - When comparing fails due to `Money::Bank::UnknownRate` `Money#<=>` will now
+   return `nil` as `Comparable#==` will not rescue exceptions in the next release.
+ - Fix `Currency` specs for `#exponent` and `#decimal_places` not making assertions.
+ - Fix a couple of Ruby warnings found in specs.
+ - Fix `Money#-`,`Money#+` arithmetics for Ruby 2.3+ : check for zero value without using eql? with a Fixnum. (#577)
+ - Use `Money#decimal_mark` when formatting with `rounded_infinite_precision` rule
+   set to `true`.
+ - Replaced meta-defined `thousands_separator` and `decimal_mark` methods with regular methods. (#579)
+
+## 6.6.0
+ - Fixed VariableExchange#exchange_with for big numbers.
  - Add Currency symbol translation support
  - `Currency.all` raises a more helpful error message
    (`Currency::MissingAttributeError`)if a currency has no priority
@@ -28,6 +173,8 @@
    `Money.default_currency`
  - `Money#==` changed to acknowledge that 0 in one currency is equal to 0 in any currency.
  - Changed KRW subunit_to_unit from 100 to 1
+ - Decouple exchange rates storage from bank objects and formalize storage public API. Default is `Money::RatesStore::Memory`.
+ - `Currency.new` now a singleton by its id
 
 ## 6.5.1
  - Fix format for BYR currency
@@ -84,7 +231,7 @@
 - Works on Ruby 1.8.7
 - Update deps
 - Depreciate Money.parse
-- Passing :symbol => false when formatting 'JPY' currency in :ja locale
+- Passing symbol: false when formatting 'JPY' currency in :ja locale
   will work as expected
 - Divide now obeys the specified rounding mode
 - Add Money#round method. This is helpful when working in infinite_precision mode and would like to perform rounding at specific points in your work flow.
@@ -267,7 +414,7 @@ Features
 
 Bugfixes
 --------
- - Fixed issue with #format(:no_cents => true) (thanks Romain & Julien)
+ - Fixed issue with #format(no_cents: true) (thanks Romain & Julien)
 
 Money 3.5.5
 ===========
@@ -354,7 +501,7 @@ Features
  - Deprecated `Money#format` with separate params instead of Hash. Deprecation
    target set to Money 3.5.0.
    ([#issue/31](http://github.com/RubyMoney/money/issues/31))
- - Deprecated `Money#new(0, :currency => "EUR")` in favor of
+ - Deprecated `Money#new(0, currency: "EUR")` in favor of
    `Money#new(0, "EUR")`. Deprecation target set to Money 3.5.0.
    ([#issue/31](http://github.com/RubyMoney/money/issues/31))
  - Throw ArgumentError when trying to multiply two Money objects together.
